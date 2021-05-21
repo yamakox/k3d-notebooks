@@ -3,6 +3,8 @@
 ### memo
 
 * .gitignoreを作る
+* tutorial_spheroid.npzなどのファイルはgitに入れず、別途コピーする
+* gitリポジトリの作成
 
 ```
 echo "# k3d-notebooks" >> README.md
