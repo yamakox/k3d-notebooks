@@ -26,25 +26,26 @@ Z_STEP = 1
 # カメラの画素サイズ(通常は正方形)
 CAMERA_PIXEL_SIZE = 6.5
 
-# 最大4色まで対応する(2番目の要素からR, G, B)
+# color_map: A list of float quadruplets (attribute value, R, G, B), sorted by attribute value. The first
+#            quadruplet should have value 0.0, the last 1.0; R, G, B are RGB color components in the range 0.0 to 1.0.
+# 最大4ボリューム分まで定義可能
 COLOR_MAP_LIST = [
-    [(0.0, 0.0, 0.0, 1.0), (1.0, 0.0, 0.0, 1.0)], 
-    [(0.0, 0.0, 1.0, 0.0), (1.0, 0.0, 1.0, 0.0)],
-    [(0.0, 0.8, 0.6, 0.0), (1.0, 0.8, 0.6, 0.0)],
-    [(0.0, 1.0, 0.0, 0.0), (1.0, 1.0, 0.0, 0.0)],
+    [0.0, 0.0, 0.0, 1.0,  1.0, 0.0, 0.0, 1.0],  # 青
+    [0.0, 0.0, 1.0, 0.0,  1.0, 0.0, 1.0, 0.0],  # 緑
+    [0.0, 0.8, 0.6, 0.0,  1.0, 0.8, 0.6, 0.0],  # 橙
+    [0.0, 1.0, 0.0, 0.0,  1.0, 1.0, 0.0, 0.0],  # 赤
 ]
-
 
 # 変数の定義 ##########
 
-# voxelの寸法 (定数を変更したらinit_boundsを実行して再計算すること)
+# voxelの寸法 (定数を変更したらinit_boundsを呼び出して再計算すること)
 voxel_dim = [
     CAMERA_PIXEL_SIZE * BINNING / MAGNIFICATION, 
     CAMERA_PIXEL_SIZE * BINNING / MAGNIFICATION, 
     Z_SLICE_LENGTH
 ]
 
-# 3D画像データの寸法 (定数を変更したらinit_boundsを実行して再計算すること)
+# 3D画像データの寸法 (定数を変更したらinit_boundsを呼び出して再計算すること)
 cx, cy, cz = (
     0 * voxel_dim[0] * REDUCE_RATIO, 
     0 * voxel_dim[1] * REDUCE_RATIO, 
@@ -60,9 +61,10 @@ state_store = []
 slider_ox = widgets.FloatSlider(step=0.1, description='x:', layout=widgets.Layout(width='33%'))
 slider_oy = widgets.FloatSlider(step=0.1, description='y:', layout=widgets.Layout(width='33%'))
 slider_oz = widgets.FloatSlider(step=0.1, description='z:', layout=widgets.Layout(width='33%'))
-slider_ha = widgets.FloatSlider(value=0, min=0.0, max=360.0, step=1.0, description='theta:', layout=widgets.Layout(width='33%'))
-slider_va = widgets.FloatSlider(value=45, min=-89.0, max=89.0, step=1.0, description='phi:', layout=widgets.Layout(width='33%'))
-slider_d = widgets.FloatSlider(value=1000, min=1, max=3000, step=1.0, description='distance:', layout=widgets.Layout(width='33%'))
+menu_axis = widgets.Dropdown(value='z', options=['x', 'y', 'z'], layout=widgets.Layout(width='5%'))
+slider_ha = widgets.FloatSlider(value=0, min=0.0, max=360.0, step=1.0, description='theta:', layout=widgets.Layout(width='30%'))
+slider_va = widgets.FloatSlider(value=90, min=1.0, max=179.0, step=1.0, description='phi:', layout=widgets.Layout(width='30%'))
+slider_d = widgets.FloatSlider(value=1000, min=1, max=3000, step=1.0, description='distance:', layout=widgets.Layout(width='30%'))
 
 # channel contrast
 check_ch, slider_ch = [], []
@@ -93,7 +95,8 @@ def init_bounds(data):
     )
 
 # コントロール用ウィジェットの初期化処理
-def init_controls(plot, obj, phi=45, distance=(1000, 1, 3000)):
+# objはMultiMIPオブジェクトのみ指定可能
+def init_controls(plot, obj, axis='z', phi=90, distance=(1000, 1, 3000)):
     global _plot, _obj
     _plot, _obj = plot, obj
     data1 = _obj.volume_list[0]
@@ -102,6 +105,7 @@ def init_controls(plot, obj, phi=45, distance=(1000, 1, 3000)):
     slider_ox.min, slider_ox.max, slider_ox.value = -cx*2, cx*2, 0
     slider_oy.min, slider_oy.max, slider_oy.value = -cy*2, cy*2, 0
     slider_oz.min, slider_oz.max, slider_oz.value = -cz*10, cz*10, 0
+    menu_axis.value = axis
     slider_va.value = phi
     slider_d.min, slider_d.max, slider_d.value = distance[1], distance[2], distance[0]
     
@@ -120,20 +124,52 @@ def init_controls(plot, obj, phi=45, distance=(1000, 1, 3000)):
     check_alpha.value=_obj.alpha_blending
 
 # camera position change event handler
-def update_camera_pos(*change):
+def update_camera_pos_x():
     phi = np.pi * slider_va.value / 180.0
-    xy, z = slider_d.value * np.cos(phi), slider_d.value * np.sin(phi)
+    yz, x = slider_d.value * np.sin(phi), slider_d.value * np.cos(phi)
     theta = np.pi * slider_ha.value / 180.0
-    x, y = xy * np.sin(theta), xy * np.cos(theta)
+    y, z = yz * -np.sin(theta), yz * -np.cos(theta)
     ox, oy, oz =  cx/2 + slider_ox.value, cy/2 + slider_oy.value, cz/2 + slider_oz.value
-    _plot.camera = [ox - x, oy - y, oz + z, ox, oy, oz, 0, 0, 1]
+    _plot.camera = [ox + x, oy + y, oz + z, ox, oy, oz, 1, 0, 0]
+
+def update_camera_pos_y():
+    phi = np.pi * slider_va.value / 180.0
+    zx, y = slider_d.value * np.sin(phi), slider_d.value * np.cos(phi)
+    theta = np.pi * slider_ha.value / 180.0
+    z, x = zx * -np.sin(theta), zx * -np.cos(theta)
+    ox, oy, oz =  cx/2 + slider_ox.value, cy/2 + slider_oy.value, cz/2 + slider_oz.value
+    _plot.camera = [ox + x, oy + y, oz + z, ox, oy, oz, 0, 1, 0]
+
+def update_camera_pos_z():
+    phi = np.pi * slider_va.value / 180.0
+    xy, z = slider_d.value * np.sin(phi), slider_d.value * np.cos(phi)
+    theta = np.pi * slider_ha.value / 180.0
+    x, y = xy * -np.sin(theta), xy * -np.cos(theta)
+    ox, oy, oz =  cx/2 + slider_ox.value, cy/2 + slider_oy.value, cz/2 + slider_oz.value
+    _plot.camera = [ox + x, oy + y, oz + z, ox, oy, oz, 0, 0, 1]
+
+update_camera_pos_table = {
+    'x': update_camera_pos_x, 
+    'y': update_camera_pos_y, 
+    'z': update_camera_pos_z, 
+}
+
+def update_camera_pos(*change):
+    update_camera_pos_table[menu_axis.value]()
 
 # channel contrast change event handler
 def update_color_range_list(*change):
     color_range_list = []
     for i, data in enumerate(_obj.volume_list):
-        color_range_list.append([slider_ch[i].value[0], slider_ch[i].value[1] if check_ch[i].value else 10000000])
+        color_range_list.append([slider_ch[i].value[0], slider_ch[i].value[1]])
     _obj.color_range_list = color_range_list
+
+# channel opacity change event handler
+def update_opacity_function_list(*change):
+    opacity_function_list = []
+    for i, data in enumerate(_obj.volume_list):
+        opacity_function_list.append([0.0, 0.0, 1.0, 1.0] if check_ch[i].value else [0.0, 0.0, 1.0, 0.0])
+    _obj.opacity_function_list = opacity_function_list
 
 # clipping planes change event handler
 def update_plane(*change):
@@ -154,6 +190,7 @@ def update_plane_alpha(*change):
 def refresh():
     update_camera_pos()
     update_color_range_list()
+    update_opacity_function_list()
     update_plane()
     update_plane_alpha()
 
@@ -162,12 +199,13 @@ def observe_control_events():
     slider_ox.observe(update_camera_pos, names='value')
     slider_oy.observe(update_camera_pos, names='value')
     slider_oz.observe(update_camera_pos, names='value')
+    menu_axis.observe(update_camera_pos, names='value')
     slider_ha.observe(update_camera_pos, names='value')
     slider_va.observe(update_camera_pos, names='value')
     slider_d.observe(update_camera_pos, names='value')    
-    for i, j in zip(check_ch, slider_ch):
+    for i, j in zip(slider_ch, check_ch):
         i.observe(update_color_range_list, names='value')
-        j.observe(update_color_range_list, names='value')
+        j.observe(update_opacity_function_list, names='value')
     slider_plane_x.observe(update_plane, names='value')
     slider_plane_y.observe(update_plane, names='value')
     slider_plane_z.observe(update_plane, names='value')
@@ -178,12 +216,13 @@ def unobserve_control_events():
     slider_ox.unobserve(update_camera_pos, names='value')
     slider_oy.unobserve(update_camera_pos, names='value')
     slider_oz.unobserve(update_camera_pos, names='value')
+    menu_axis.unobserve(update_camera_pos, names='value')
     slider_ha.unobserve(update_camera_pos, names='value')
     slider_va.unobserve(update_camera_pos, names='value')
     slider_d.unobserve(update_camera_pos, names='value')
-    for i, j in zip(check_ch, slider_ch):
+    for i, j in zip(slider_ch, check_ch):
         i.unobserve(update_color_range_list, names='value')
-        j.unobserve(update_color_range_list, names='value')
+        j.unobserve(update_opacity_function_list, names='value')
     slider_plane_x.unobserve(update_plane, names='value')
     slider_plane_y.unobserve(update_plane, names='value')
     slider_plane_z.unobserve(update_plane, names='value')
@@ -197,7 +236,7 @@ def display_controls():
     display(
         widgets.VBox([
             widgets.HBox([slider_ox, slider_oy, slider_oz]),
-            widgets.HBox([slider_ha, slider_va, slider_d]),
+            widgets.HBox([menu_axis, slider_ha, slider_va, slider_d]),
             widgets.HBox([
                 widgets.VBox([
                     widgets.HBox([i, j]) for i, j, k in zip(check_ch, slider_ch, _obj.volume_list)
@@ -279,8 +318,9 @@ def on_seek(*b):
         _ = state_store[input_state_index.value]
         if _['duration']:
             input_state_duration.value = _['duration']
-        update_movie_camera_pos(_['ox'], _['oy'], _['oz'], _['ha'], _['va'], _['d'])
-        update_movie_color_range_list(_['slider_ch'], _['check_ch'])
+        update_movie_camera_pos(_['ox'], _['oy'], _['oz'], _['axis'], _['ha'], _['va'], _['d'])
+        update_movie_color_range_list(_['slider_ch'])
+        update_movie_opacity_function_list(_['check_ch'])
         update_movie_plane(_['plane_x'], _['plane_y'], _['plane_z'])
         update_movie_alpha_blending(_['alpha'])
 
@@ -319,6 +359,7 @@ def get_state(duration=None):
         ox = slider_ox.value,
         oy = slider_oy.value, 
         oz = slider_oz.value, 
+        axis = menu_axis.value, 
         ha = slider_ha.value, 
         va = slider_va.value, 
         d = slider_d.value, 
@@ -363,33 +404,31 @@ def display_movie_controls():
 
 # 動画作成処理 ##########
 
-def update_movie_camera_pos(ox, oy, oz, theta, phi, d):
+def update_movie_camera_pos(ox, oy, oz, axis, theta, phi, d):
     unobserve_control_events()
     slider_ox.value = ox
     slider_oy.value = oy
     slider_oz.value = oz
+    menu_axis.value = axis
     slider_ha.value = theta
     slider_va.value = phi
     slider_d.value = d
     observe_control_events()
-    phi_ = np.pi * phi / 180.0
-    xy_, z_ = d * np.cos(phi_), d * np.sin(phi_)
-    theta_ = np.pi * theta / 180.0
-    x_, y_ = xy_ * np.sin(theta_), xy_ * np.cos(theta_)
-    ox_, oy_, oz_ =  cx/2 + ox, cy/2 + oy, cz/2 + oz
-    _plot.camera = [ox_ - x_, oy_ - y_, oz_ + z_, ox_, oy_, oz_, 0, 0, 1]
+    update_camera_pos()
 
-def update_movie_color_range_list(slider_ch_, check_ch_):
+def update_movie_color_range_list(slider_ch_):
     unobserve_control_events()
     for i, j in zip(slider_ch, slider_ch_):
         i.value = j
+    observe_control_events()
+    update_color_range_list()
+
+def update_movie_opacity_function_list(check_ch_):
+    unobserve_control_events()
     for i, j in zip(check_ch, check_ch_):
         i.value = j
     observe_control_events()
-    color_range_list = []
-    for i, j in zip(slider_ch_, check_ch_):
-        color_range_list.append([i[0], i[1] if j else 10000000])
-    _obj.color_range_list = color_range_list
+    update_opacity_function_list()
 
 def update_movie_plane(plane_x, plane_y, plane_z):
     unobserve_control_events()
@@ -420,6 +459,7 @@ def sequence_movie(fps):
         ox_ = np.linspace(state0['ox'], state1['ox'], c)
         oy_ = np.linspace(state0['oy'], state1['oy'], c)
         oz_ = np.linspace(state0['oz'], state1['oz'], c)
+        axis_ = state1['axis']
         ha_ = np.linspace(state0['ha'], state1['ha'], c)
         va_ = np.linspace(state0['va'], state1['va'], c)
         d_  = np.linspace(state0['d'] , state1['d'], c)
@@ -429,54 +469,19 @@ def sequence_movie(fps):
         plane_z_ = (np.linspace(state0['plane_z'][0], state1['plane_z'][0], c)+.5, np.linspace(state0['plane_z'][1], state1['plane_z'][1], c)+.5)
         for j in range(1 if i > 0 else 0, c):
             yield dict(
-                camera_pos = (ox_[j], oy_[j], oz_[j], ha_[j], va_[j], d_[j]), 
-                color_range_list = ([(ch[0][j], ch[1][j]) for ch in slider_ch_], state0['check_ch'] if j < c -1 else state1['check_ch']), 
+                camera_pos = (ox_[j], oy_[j], oz_[j], axis_, ha_[j], va_[j], d_[j]), 
+                color_range_list = ([(ch[0][j], ch[1][j]) for ch in slider_ch_],), 
+                opacity_function_list = (state1['check_ch'],), 
                 plane = ((plane_x_[0][j], plane_x_[1][j]), (plane_y_[0][j], plane_y_[1][j]), (plane_z_[0][j], plane_z_[1][j])), 
                 alpha_blending = state0['alpha'] if j < c - 1 else state1['alpha']
             )
-
-def _interpolate(xnew, x, y):
-    f = interpolate.splrep(x, y, s=0)
-    return interpolate.splev(xnew, f, der=0)
-
-# sequence_movie_splineはグニャグニャしすぎて酔いそうになるため没。
-def sequence_movie_spline(fps):
-    if len(state_store) < 4:    # スプライン補間のために4点必要
-        return
-    time_series, total = [], 0
-    for i in state_store:
-        total += i['duration']
-        time_series.append(total)
-    tp = np.linspace(0, total, total * fps + 1)
-    df = pd.DataFrame(state_store)
-    ox_ = _interpolate(tp, time_series, df['ox'])
-    oy_ = _interpolate(tp, time_series, df['oy'])
-    oz_ = _interpolate(tp, time_series, df['oz'])
-    ha_ = _interpolate(tp, time_series, df['ha'])
-    va_ = _interpolate(tp, time_series, df['va'])
-    d_  = _interpolate(tp, time_series, df['d'])
-    t = 0
-    for i in range(len(state_store) - 1):
-        state0 = state_store[i]
-        state1 = state_store[i + 1]
-        c = int(state1['duration'] * fps + 1)
-        slider_ch_ = [(np.linspace(_0[0], _1[0], c)+.5, np.linspace(_0[1], _1[1], c)+.5) for _0, _1 in zip(state0['slider_ch'], state1['slider_ch'])]
-        plane_x_ = (np.linspace(state0['plane_x'][0], state1['plane_x'][0], c)+.5, np.linspace(state0['plane_x'][1], state1['plane_x'][1], c)+.5)
-        plane_y_ = (np.linspace(state0['plane_y'][0], state1['plane_y'][0], c)+.5, np.linspace(state0['plane_y'][1], state1['plane_y'][1], c)+.5)
-        plane_z_ = (np.linspace(state0['plane_z'][0], state1['plane_z'][0], c)+.5, np.linspace(state0['plane_z'][1], state1['plane_z'][1], c)+.5)
-        for j in range(1 if i > 0 else 0, c):
-            yield dict(
-                camera_pos = (ox_[t], oy_[t], oz_[t], ha_[t], va_[t], d_[t]), 
-                color_range_list = ([(ch[0][j], ch[1][j]) for ch in slider_ch_], state0['check_ch'] if j < c -1 else state1['check_ch']), 
-                plane = ((plane_x_[0][j], plane_x_[1][j]), (plane_y_[0][j], plane_y_[1][j]), (plane_z_[0][j], plane_z_[1][j])), 
-                alpha_blending = state0['alpha'] if j < c - 1 else state1['alpha']
-            )
-            t += 1
 
 def dry_run(fps=5):
+    print_state()
     for seq in sequence_movie(fps):
         update_movie_camera_pos(*seq['camera_pos'])
         update_movie_color_range_list(*seq['color_range_list'])
+        update_movie_opacity_function_list(*seq['opacity_function_list'])
         update_movie_plane(*seq['plane'])
         update_movie_alpha_blending(seq['alpha_blending'])
         time.sleep(1/fps)
@@ -497,6 +502,7 @@ def generate_movie(movie_filename, fps, bitrate='8192k'):
                     break
                 update_movie_camera_pos(*seq['camera_pos'])
                 update_movie_color_range_list(*seq['color_range_list'])
+                update_movie_opacity_function_list(*seq['opacity_function_list'])
                 update_movie_plane(*seq['plane'])
                 update_movie_alpha_blending(seq['alpha_blending'])
                 _plot.fetch_screenshot()
