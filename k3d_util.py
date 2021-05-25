@@ -419,7 +419,7 @@ def sequence_movie(fps):
         c = int(state1['duration'] * fps + 1)
         ox_ = np.linspace(state0['ox'], state1['ox'], c)
         oy_ = np.linspace(state0['oy'], state1['oy'], c)
-        oz_ = np.linspace(state0['oz'], state1['oy'], c)
+        oz_ = np.linspace(state0['oz'], state1['oz'], c)
         ha_ = np.linspace(state0['ha'], state1['ha'], c)
         va_ = np.linspace(state0['va'], state1['va'], c)
         d_  = np.linspace(state0['d'] , state1['d'], c)
