@@ -28,13 +28,7 @@ CAMERA_PIXEL_SIZE = 6.5
 
 # color_map: A list of float quadruplets (attribute value, R, G, B), sorted by attribute value. The first
 #            quadruplet should have value 0.0, the last 1.0; R, G, B are RGB color components in the range 0.0 to 1.0.
-# 最大4ボリューム分まで定義可能
-COLOR_MAP_LIST = [
-    [0.0, 0.0, 0.0, 1.0,  1.0, 0.0, 0.0, 1.0],  # 青
-    [0.0, 0.0, 1.0, 0.0,  1.0, 0.0, 1.0, 0.0],  # 緑
-    [0.0, 0.8, 0.6, 0.0,  1.0, 0.8, 0.6, 0.0],  # 橙
-    [0.0, 1.0, 0.0, 0.0,  1.0, 1.0, 0.0, 0.0],  # 赤
-]
+COLOR_MAP = [0.0, 1.0, 1.0, 1.0,  1.0, 1.0, 1.0, 1.0]  # 白
 
 # 変数の定義 ##########
 
@@ -67,18 +61,13 @@ slider_va = widgets.FloatSlider(value=90, min=1.0, max=179.0, step=1.0, descript
 slider_d = widgets.FloatSlider(value=1000, min=1, max=3000, step=1.0, description='distance:', layout=widgets.Layout(width='30%'))
 
 # channel contrast
-check_ch, slider_ch = [], []
-for ch in range(1, 5):
-    check_ch.append(widgets.Checkbox(value=True, description=f'{ch}:', layout=widgets.Layout(width='25%')))
-    slider_ch.append(widgets.IntRangeSlider(step=1, layout=widgets.Layout(width='70%')))
+check_ch = widgets.Checkbox(value=True, description='1:', layout=widgets.Layout(width='25%'))
+slider_ch = widgets.IntRangeSlider(step=1, layout=widgets.Layout(width='70%'))
 
 # clipping planes
 slider_plane_x = widgets.IntRangeSlider(step=1, description='x slice:', layout=widgets.Layout(width='95%'))
 slider_plane_y = widgets.IntRangeSlider(step=1, description='y slice:', layout=widgets.Layout(width='95%'))
 slider_plane_z = widgets.IntRangeSlider(step=1, description='z slice:', layout=widgets.Layout(width='95%'))
-
-# alpha blending
-check_alpha = widgets.Checkbox(description='alpha blending')
 
 # 3D画像データの寸法を計算する
 def init_bounds(data):
@@ -95,11 +84,11 @@ def init_bounds(data):
     )
 
 # コントロール用ウィジェットの初期化処理
-# objはMultiMIPオブジェクトのみ指定可能
+# objはVolume, MIPオブジェクトなどを指定可能
 def init_controls(plot, obj, axis='z', phi=90, distance=(1000, 1, 3000)):
     global _plot, _obj
     _plot, _obj = plot, obj
-    data1 = _obj.volume_list[0]
+    data1 = _obj.volume
     
     # camera position
     slider_ox.min, slider_ox.max, slider_ox.value = -cx*2, cx*2, 0
@@ -110,18 +99,14 @@ def init_controls(plot, obj, axis='z', phi=90, distance=(1000, 1, 3000)):
     slider_d.min, slider_d.max, slider_d.value = distance[1], distance[2], distance[0]
     
     # channel contrast
-    for i, data in enumerate(_obj.volume_list):
-        min_, max_ = int(data.min()), int(data.max())
-        slider_ch[i].max, slider_ch[i].min = max_, min_
-        slider_ch[i].value = [min_, max_]
+    min_, max_ = int(data1.min()), int(data1.max())
+    slider_ch.max, slider_ch.min = max_, min_
+    slider_ch.value = [min_, max_]
     
     # clipping planes
     slider_plane_x.min, slider_plane_x.max, slider_plane_x.value = 0, data1.shape[2], [0, data1.shape[2]]
     slider_plane_y.min, slider_plane_y.max, slider_plane_y.value = 0, data1.shape[1], [0, data1.shape[1]]
     slider_plane_z.min, slider_plane_z.max, slider_plane_z.value = 0, data1.shape[0], [0, data1.shape[0]]
-    
-    # alpha blending
-    check_alpha.value=_obj.alpha_blending
 
 # camera position change event handler
 def update_camera_pos_x():
@@ -158,18 +143,12 @@ def update_camera_pos(*change):
     update_camera_pos_table[menu_axis.value]()
 
 # channel contrast change event handler
-def update_color_range_list(*change):
-    color_range_list = []
-    for i, data in enumerate(_obj.volume_list):
-        color_range_list.append([slider_ch[i].value[0], slider_ch[i].value[1]])
-    _obj.color_range_list = color_range_list
+def update_color_range(*change):
+    _obj.color_range = [slider_ch.value[0], slider_ch.value[1]]
 
 # channel opacity change event handler
-def update_opacity_function_list(*change):
-    opacity_function_list = []
-    for i, data in enumerate(_obj.volume_list):
-        opacity_function_list.append([0.0, 0.0, 1.0, 1.0] if check_ch[i].value else [0.0, 0.0, 1.0, 0.0])
-    _obj.opacity_function_list = opacity_function_list
+def update_opacity_function(*change):
+    _obj.opacity_function = [0.0, 0.0, 1.0, 1.0] if check_ch.value else [0.0, 0.0, 1.0, 0.0]
 
 # clipping planes change event handler
 def update_plane(*change):
@@ -182,17 +161,12 @@ def update_plane(*change):
         [0, 0, -1, slider_plane_z.value[1] * voxel_dim[2] * Z_STEP],
     ]
 
-# alpha blending change event handler
-def update_plane_alpha(*change):
-    _obj.alpha_blending = check_alpha.value
-
 # refresh view
 def refresh():
     update_camera_pos()
-    update_color_range_list()
-    update_opacity_function_list()
+    update_color_range()
+    update_opacity_function()
     update_plane()
-    update_plane_alpha()
 
 # observe events
 def observe_control_events():
@@ -202,14 +176,12 @@ def observe_control_events():
     menu_axis.observe(update_camera_pos, names='value')
     slider_ha.observe(update_camera_pos, names='value')
     slider_va.observe(update_camera_pos, names='value')
-    slider_d.observe(update_camera_pos, names='value')    
-    for i, j in zip(slider_ch, check_ch):
-        i.observe(update_color_range_list, names='value')
-        j.observe(update_opacity_function_list, names='value')
+    slider_d.observe(update_camera_pos, names='value')
+    slider_ch.observe(update_color_range, names='value')
+    check_ch.observe(update_opacity_function, names='value')
     slider_plane_x.observe(update_plane, names='value')
     slider_plane_y.observe(update_plane, names='value')
     slider_plane_z.observe(update_plane, names='value')
-    check_alpha.observe(update_plane_alpha, names='value')
 
 # unobserve events
 def unobserve_control_events():
@@ -220,13 +192,11 @@ def unobserve_control_events():
     slider_ha.unobserve(update_camera_pos, names='value')
     slider_va.unobserve(update_camera_pos, names='value')
     slider_d.unobserve(update_camera_pos, names='value')
-    for i, j in zip(slider_ch, check_ch):
-        i.unobserve(update_color_range_list, names='value')
-        j.unobserve(update_opacity_function_list, names='value')
+    slider_ch.unobserve(update_color_range, names='value')
+    check_ch.unobserve(update_opacity_function, names='value')
     slider_plane_x.unobserve(update_plane, names='value')
     slider_plane_y.unobserve(update_plane, names='value')
     slider_plane_z.unobserve(update_plane, names='value')
-    check_alpha.unobserve(update_plane_alpha, names='value')
 
 observe_control_events()
 
@@ -239,13 +209,12 @@ def display_controls():
             widgets.HBox([menu_axis, slider_ha, slider_va, slider_d]),
             widgets.HBox([
                 widgets.VBox([
-                    widgets.HBox([i, j]) for i, j, k in zip(check_ch, slider_ch, _obj.volume_list)
+                    widgets.HBox([check_ch, slider_ch])
                 ], layout=widgets.Layout(width='55%')),
                 widgets.VBox([
                     slider_plane_x, 
                     slider_plane_y, 
                     slider_plane_z, 
-                    check_alpha, 
                 ], layout=widgets.Layout(width='45%')),
             ]),
         ])
@@ -319,10 +288,9 @@ def on_seek(*b):
         if _['duration']:
             input_state_duration.value = _['duration']
         update_movie_camera_pos(_['ox'], _['oy'], _['oz'], _['axis'], _['ha'], _['va'], _['d'])
-        update_movie_color_range_list(_['slider_ch'])
-        update_movie_opacity_function_list(_['check_ch'])
+        update_movie_color_range(_['slider_ch'])
+        update_movie_opacity_function(_['check_ch'])
         update_movie_plane(_['plane_x'], _['plane_y'], _['plane_z'])
-        update_movie_alpha_blending(_['alpha'])
 
 def on_remove(*b):
     if 1 < len(state_store) and input_state_index.value < len(state_store):
@@ -363,12 +331,11 @@ def get_state(duration=None):
         ha = slider_ha.value, 
         va = slider_va.value, 
         d = slider_d.value, 
-        check_ch = [x.value for x, _ in zip(check_ch, _obj.volume_list)], 
-        slider_ch = [x.value for x, _ in zip(slider_ch, _obj.volume_list)], 
+        check_ch = check_ch.value, 
+        slider_ch = slider_ch.value, 
         plane_x = slider_plane_x.value, 
         plane_y = slider_plane_y.value, 
         plane_z = slider_plane_z.value, 
-        alpha = check_alpha.value
     )
 
 
@@ -416,19 +383,17 @@ def update_movie_camera_pos(ox, oy, oz, axis, theta, phi, d):
     observe_control_events()
     update_camera_pos()
 
-def update_movie_color_range_list(slider_ch_):
+def update_movie_color_range(slider_ch_):
     unobserve_control_events()
-    for i, j in zip(slider_ch, slider_ch_):
-        i.value = j
+    slider_ch.value = slider_ch_
     observe_control_events()
-    update_color_range_list()
+    update_color_range()
 
-def update_movie_opacity_function_list(check_ch_):
+def update_movie_opacity_function(check_ch_):
     unobserve_control_events()
-    for i, j in zip(check_ch, check_ch_):
-        i.value = j
+    check_ch.value = check_ch_
     observe_control_events()
-    update_opacity_function_list()
+    update_opacity_function()
 
 def update_movie_plane(plane_x, plane_y, plane_z):
     unobserve_control_events()
@@ -445,12 +410,6 @@ def update_movie_plane(plane_x, plane_y, plane_z):
         [0, 0, -1, plane_z[1] * voxel_dim[2] * Z_STEP],
     ]
 
-def update_movie_alpha_blending(alpha):
-    unobserve_control_events()
-    check_alpha.value = alpha
-    observe_control_events()
-    _obj.alpha_blending = alpha
-
 def sequence_movie(fps):
     for i in range(len(state_store) - 1):
         state0 = state_store[i]
@@ -463,27 +422,25 @@ def sequence_movie(fps):
         ha_ = np.linspace(state0['ha'], state1['ha'], c)
         va_ = np.linspace(state0['va'], state1['va'], c)
         d_  = np.linspace(state0['d'] , state1['d'], c)
-        slider_ch_ = [(np.linspace(_0[0], _1[0], c)+.5, np.linspace(_0[1], _1[1], c)+.5) for _0, _1 in zip(state0['slider_ch'], state1['slider_ch'])]
+        slider_ch_ = (np.linspace(state0['slider_ch'][0], state1['slider_ch'][0], c)+.5, np.linspace(state0['slider_ch'][1], state1['slider_ch'][1], c)+.5)
         plane_x_ = (np.linspace(state0['plane_x'][0], state1['plane_x'][0], c)+.5, np.linspace(state0['plane_x'][1], state1['plane_x'][1], c)+.5)
         plane_y_ = (np.linspace(state0['plane_y'][0], state1['plane_y'][0], c)+.5, np.linspace(state0['plane_y'][1], state1['plane_y'][1], c)+.5)
         plane_z_ = (np.linspace(state0['plane_z'][0], state1['plane_z'][0], c)+.5, np.linspace(state0['plane_z'][1], state1['plane_z'][1], c)+.5)
         for j in range(1 if i > 0 else 0, c):
             yield dict(
                 camera_pos = (ox_[j], oy_[j], oz_[j], axis_, ha_[j], va_[j], d_[j]), 
-                color_range_list = ([(ch[0][j], ch[1][j]) for ch in slider_ch_],), 
-                opacity_function_list = (state1['check_ch'],), 
+                color_range = ((slider_ch_[0][j], slider_ch_[1][j]),), 
+                opacity_function = (state1['check_ch'],), 
                 plane = ((plane_x_[0][j], plane_x_[1][j]), (plane_y_[0][j], plane_y_[1][j]), (plane_z_[0][j], plane_z_[1][j])), 
-                alpha_blending = state0['alpha'] if j < c - 1 else state1['alpha']
             )
 
 def dry_run(fps=5):
     print_state()
     for seq in sequence_movie(fps):
         update_movie_camera_pos(*seq['camera_pos'])
-        update_movie_color_range_list(*seq['color_range_list'])
-        update_movie_opacity_function_list(*seq['opacity_function_list'])
+        update_movie_color_range(*seq['color_range'])
+        update_movie_opacity_function(*seq['opacity_function'])
         update_movie_plane(*seq['plane'])
-        update_movie_alpha_blending(seq['alpha_blending'])
         time.sleep(1/fps)
 
 # 致命的な問題: 前のフレームと変化がないときはscreenshot = yieldで固まってしまう。(ipywidgetsのobserve関数で変数の変化を検出している)
@@ -501,10 +458,9 @@ def generate_movie(movie_filename, fps, bitrate='8192k'):
                         print('generating movie stopped.')
                     break
                 update_movie_camera_pos(*seq['camera_pos'])
-                update_movie_color_range_list(*seq['color_range_list'])
-                update_movie_opacity_function_list(*seq['opacity_function_list'])
+                update_movie_color_range(*seq['color_range'])
+                update_movie_opacity_function(*seq['opacity_function'])
                 update_movie_plane(*seq['plane'])
-                update_movie_alpha_blending(seq['alpha_blending'])
                 _plot.fetch_screenshot()
                 screenshot = yield
                 img = np.asarray(Image.open(io.BytesIO(screenshot)))
