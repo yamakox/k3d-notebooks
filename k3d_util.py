@@ -512,7 +512,14 @@ def dry_run(fps=5):
 
 # 致命的な問題: 前のフレームと変化がないときはscreenshot = yieldで固まってしまう。(ipywidgetsのobserve関数で変数の変化を検出している)
 # → _text_objのテキストを常時書き換えて、前のフレームと常に変化が生じるようにした。
-def generate_movie(movie_filename, fps, bitrate='8192k'):
+def generate_movie(movie_filename, fps, bitrate='10240k'):
+    # H.264ライセンス問題: https://av.watch.impress.co.jp/docs/20031118/mpegla.htm
+    duration_list = [i['duration'] for i in state_store[1:]]
+    if sum(duration_list) > 12 * 60:
+        with output_state:
+            print('H.264 movie should not be greater than 12 minutes.')
+        return
+    
     @_plot.yield_screenshots
     def generate_movie_():
         with output_state:
@@ -547,7 +554,7 @@ def generate_movie(movie_filename, fps, bitrate='8192k'):
             else:
                 with output_state:
                     print('generating movie finished.')
+    
     _plot.screenshot = ''
     print_state()
     generate_movie_()
-
