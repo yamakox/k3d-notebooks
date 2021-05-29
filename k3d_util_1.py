@@ -85,9 +85,9 @@ def init_bounds(data):
 
 # コントロール用ウィジェットの初期化処理
 # objはVolume, MIPオブジェクトなどを指定可能
-def init_controls(plot, obj, axis='z', phi=90, distance=(1000, 1, 3000)):
-    global _plot, _obj
-    _plot, _obj = plot, obj
+def init_controls(plot, obj, text_obj, axis='z', phi=90, distance=(1000, 1, 3000)):
+    global _plot, _obj, _text_obj
+    _plot, _obj, _text_obj = plot, obj, text_obj
     data1 = _obj.volume
     
     # camera position
@@ -109,38 +109,49 @@ def init_controls(plot, obj, axis='z', phi=90, distance=(1000, 1, 3000)):
     slider_plane_z.min, slider_plane_z.max, slider_plane_z.value = 0, data1.shape[0], [0, data1.shape[0]]
 
 # camera position change event handler
-def update_camera_pos_x():
-    phi = np.pi * slider_va.value / 180.0
-    yz, x = slider_d.value * np.sin(phi), slider_d.value * np.cos(phi)
-    theta = np.pi * slider_ha.value / 180.0
-    y, z = yz * -np.sin(theta), yz * -np.cos(theta)
-    ox, oy, oz =  cx/2 + slider_ox.value, cy/2 + slider_oy.value, cz/2 + slider_oz.value
-    _plot.camera = [ox + x, oy + y, oz + z, ox, oy, oz, 1, 0, 0]
+def compute_camera_pos_x(ox, oy, oz, theta, phi, d):
+    phi_ = np.pi * phi / 180.0
+    yz_, x_ = d * np.sin(phi_), d * np.cos(phi_)
+    theta_ = np.pi * theta / 180.0
+    y_, z_ = yz_ * -np.sin(theta_), yz_ * -np.cos(theta_)
+    ox_, oy_, oz_ =  cx/2 + ox, cy/2 + oy, cz/2 + oz
+    return [ox_ + x_, oy_ + y_, oz_ + z_, ox_, oy_, oz_, np.sin(phi_), np.sin(theta_), np.cos(theta_)]
 
-def update_camera_pos_y():
-    phi = np.pi * slider_va.value / 180.0
-    zx, y = slider_d.value * np.sin(phi), slider_d.value * np.cos(phi)
-    theta = np.pi * slider_ha.value / 180.0
-    z, x = zx * -np.sin(theta), zx * -np.cos(theta)
-    ox, oy, oz =  cx/2 + slider_ox.value, cy/2 + slider_oy.value, cz/2 + slider_oz.value
-    _plot.camera = [ox + x, oy + y, oz + z, ox, oy, oz, 0, 1, 0]
+def compute_camera_pos_y(ox, oy, oz, theta, phi, d):
+    phi_ = np.pi * phi / 180.0
+    zx_, y_ = d * np.sin(phi_), d * np.cos(phi_)
+    theta_ = np.pi * theta / 180.0
+    z_, x_ = zx_ * -np.sin(theta_), zx_ * -np.cos(theta_)
+    ox_, oy_, oz_ =  cx/2 + ox, cy/2 + oy, cz/2 + oz
+    return [ox_ + x_, oy_ + y_, oz_ + z_, ox_, oy_, oz_, np.cos(theta_), np.sin(phi_), np.sin(theta_)]
 
-def update_camera_pos_z():
-    phi = np.pi * slider_va.value / 180.0
-    xy, z = slider_d.value * np.sin(phi), slider_d.value * np.cos(phi)
-    theta = np.pi * slider_ha.value / 180.0
-    x, y = xy * -np.sin(theta), xy * -np.cos(theta)
-    ox, oy, oz =  cx/2 + slider_ox.value, cy/2 + slider_oy.value, cz/2 + slider_oz.value
-    _plot.camera = [ox + x, oy + y, oz + z, ox, oy, oz, 0, 0, 1]
+def compute_camera_pos_z(ox, oy, oz, theta, phi, d):
+    phi_ = np.pi * phi / 180.0
+    xy_, z_ = d * np.sin(phi_), d * np.cos(phi_)
+    theta_ = np.pi * theta / 180.0
+    x_, y_ = xy_ * -np.sin(theta_), xy_ * -np.cos(theta_)
+    ox_, oy_, oz_ =  cx/2 + ox, cy/2 + oy, cz/2 + oz
+    return [ox_ + x_, oy_ + y_, oz_ + z_, ox_, oy_, oz_, np.sin(theta_), np.cos(theta_), np.sin(phi_)]
 
-update_camera_pos_table = {
-    'x': update_camera_pos_x, 
-    'y': update_camera_pos_y, 
-    'z': update_camera_pos_z, 
+compute_camera_pos_table = {
+    'x': compute_camera_pos_x, 
+    'y': compute_camera_pos_y, 
+    'z': compute_camera_pos_z, 
 }
 
+def compute_camera_pos(ox, oy, oz, axis, theta, phi, d):
+    return compute_camera_pos_table[axis](ox, oy, oz, theta, phi, d)
+
 def update_camera_pos(*change):
-    update_camera_pos_table[menu_axis.value]()
+    _plot.camera = compute_camera_pos(
+        slider_ox.value, 
+        slider_oy.value, 
+        slider_oz.value, 
+        menu_axis.value, 
+        slider_ha.value, 
+        slider_va.value, 
+        slider_d.value, 
+    )
 
 # channel contrast change event handler
 def update_color_range(*change):
@@ -249,8 +260,7 @@ def print_state():
 
 def on_store(*b):
     state_, last_state = get_state(), state_store[-1].copy()
-    del state_['duration'], last_state['duration']
-    if state_ != last_state and state_['axis'] == last_state['axis'] and len(state_store) < 100:
+    if len(state_store) < 100:
         state_store.append(get_state())
         print_state()
 
@@ -260,16 +270,6 @@ def on_change(*b):
     index = input_state_index.value
     if index >= len(state_store):
         return
-    if index > 0:
-        prev_state = state_store[index - 1].copy()
-        del prev_state['duration']
-        if state_ == prev_state or state_['axis'] != prev_state['axis']:
-            return
-    if index <len(state_store) - 1:
-        next_state = state_store[index + 1].copy()
-        del next_state['duration']
-        if state_ == next_state or state_['axis'] != next_state['axis']:
-            return
     state_ = get_state()
     if index == 0:
         state_['duration'] = 0
@@ -287,7 +287,16 @@ def on_seek(*b):
         _ = state_store[input_state_index.value]
         if _['duration']:
             input_state_duration.value = _['duration']
-        update_movie_camera_pos(_['ox'], _['oy'], _['oz'], _['axis'], _['ha'], _['va'], _['d'])
+        update_movie_camera_pos(
+            _['camera_pos'], 
+            _['ox'], 
+            _['oy'], 
+            _['oz'], 
+            _['axis'], 
+            _['ha'], 
+            _['va'], 
+            _['d']
+        )
         update_movie_color_range(_['slider_ch'])
         update_movie_opacity_function(_['check_ch'])
         update_movie_plane(_['plane_x'], _['plane_y'], _['plane_z'])
@@ -322,8 +331,18 @@ print_state()
 def get_state(duration=None):
     if duration is None:
         duration = input_state_duration.value
+    camera_pos = compute_camera_pos(
+        slider_ox.value, 
+        slider_oy.value, 
+        slider_oz.value, 
+        menu_axis.value, 
+        slider_ha.value, 
+        slider_va.value, 
+        slider_d.value, 
+    )
     return dict(
         duration = duration, 
+        camera_pos = camera_pos, 
         ox = slider_ox.value,
         oy = slider_oy.value, 
         oz = slider_oz.value, 
@@ -371,7 +390,7 @@ def display_movie_controls():
 
 # 動画作成処理 ##########
 
-def update_movie_camera_pos(ox, oy, oz, axis, theta, phi, d):
+def update_movie_camera_pos(camera_pos, ox, oy, oz, axis, theta, phi, d):
     unobserve_control_events()
     slider_ox.value = ox
     slider_oy.value = oy
@@ -381,7 +400,10 @@ def update_movie_camera_pos(ox, oy, oz, axis, theta, phi, d):
     slider_va.value = phi
     slider_d.value = d
     observe_control_events()
-    update_camera_pos()
+    if camera_pos is None:
+        _plot.camera = compute_camera_pos(ox, oy, oz, axis, theta, phi, d)
+    else:
+        _plot.camera = camera_pos
 
 def update_movie_color_range(slider_ch_):
     unobserve_control_events()
@@ -415,23 +437,25 @@ def sequence_movie(fps):
         state0 = state_store[i]
         state1 = state_store[i + 1]
         c = int(state1['duration'] * fps + 1)
+        camera_pos_ = np.linspace(state0['camera_pos'], state1['camera_pos'], c)
         ox_ = np.linspace(state0['ox'], state1['ox'], c)
         oy_ = np.linspace(state0['oy'], state1['oy'], c)
         oz_ = np.linspace(state0['oz'], state1['oz'], c)
         axis_ = state1['axis']
+        axis_chg = state0['axis'] != axis_
         ha_ = np.linspace(state0['ha'], state1['ha'], c)
         va_ = np.linspace(state0['va'], state1['va'], c)
         d_  = np.linspace(state0['d'] , state1['d'], c)
         slider_ch_ = (np.linspace(state0['slider_ch'][0], state1['slider_ch'][0], c)+.5, np.linspace(state0['slider_ch'][1], state1['slider_ch'][1], c)+.5)
-        plane_x_ = (np.linspace(state0['plane_x'][0], state1['plane_x'][0], c)+.5, np.linspace(state0['plane_x'][1], state1['plane_x'][1], c)+.5)
-        plane_y_ = (np.linspace(state0['plane_y'][0], state1['plane_y'][0], c)+.5, np.linspace(state0['plane_y'][1], state1['plane_y'][1], c)+.5)
-        plane_z_ = (np.linspace(state0['plane_z'][0], state1['plane_z'][0], c)+.5, np.linspace(state0['plane_z'][1], state1['plane_z'][1], c)+.5)
+        plane_x_ = np.linspace(state0['plane_x'], state1['plane_x'], c)+.5
+        plane_y_ = np.linspace(state0['plane_y'], state1['plane_y'], c)+.5
+        plane_z_ = np.linspace(state0['plane_z'], state1['plane_z'], c)+.5
         for j in range(1 if i > 0 else 0, c):
             yield dict(
-                camera_pos = (ox_[j], oy_[j], oz_[j], axis_, ha_[j], va_[j], d_[j]), 
+                camera_pos = (camera_pos_[j] if axis_chg else None, ox_[j], oy_[j], oz_[j], axis_, ha_[j], va_[j], d_[j]), 
                 color_range = ((slider_ch_[0][j], slider_ch_[1][j]),), 
                 opacity_function = (state1['check_ch'],), 
-                plane = ((plane_x_[0][j], plane_x_[1][j]), (plane_y_[0][j], plane_y_[1][j]), (plane_z_[0][j], plane_z_[1][j])), 
+                plane = ((plane_x_[j][0], plane_x_[j][1]), (plane_y_[j][0], plane_y_[j][1]), (plane_z_[j][0], plane_z_[j][1])), 
             )
 
 def dry_run(fps=5):
@@ -444,19 +468,24 @@ def dry_run(fps=5):
         time.sleep(1/fps)
 
 # 致命的な問題: 前のフレームと変化がないときはscreenshot = yieldで固まってしまう。(ipywidgetsのobserve関数で変数の変化を検出している)
+# → _text_objのテキストを常時書き換えて、前のフレームと常に変化が生じるようにした。
 def generate_movie(movie_filename, fps, bitrate='8192k'):
     @_plot.yield_screenshots
     def generate_movie_():
+        with output_state:
+            print('generating movie started.')
+        text = r'-\|/'
         h = _plot.height * 2
         w = int(h * 16/9) & ~0x0f
         with FFmpegFrameWriter(movie_filename, fps=fps, size=(w, h), bitrate=bitrate, stdout=True) as writer:
             global sequence_stop
             sequence_stop = False
-            for seq in sequence_movie(fps):
+            for i, seq in enumerate(sequence_movie(fps)):
                 if sequence_stop:
                     with output_state:
                         print('generating movie stopped.')
                     break
+                _text_obj.text = text[i%len(text)]
                 update_movie_camera_pos(*seq['camera_pos'])
                 update_movie_color_range(*seq['color_range'])
                 update_movie_opacity_function(*seq['opacity_function'])
@@ -471,8 +500,9 @@ def generate_movie(movie_filename, fps, bitrate='8192k'):
                     offset = (w - img.shape[1]) // 2
                     writer.frame[:, offset:(offset+img.shape[1]), :] = img[:, :, :3]
                     writer.add_frame()
+            else:
+                with output_state:
+                    print('generating movie finished.')
     _plot.screenshot = ''
     print_state()
-    with output_state:
-        print('generating movie started.')
     generate_movie_()
