@@ -3,7 +3,7 @@ import ipywidgets as widgets
 from IPython.display import display
 import pandas as pd
 from scipy import interpolate
-from frame_writer import *
+from frame_writer2 import *
 import base64, io, time
 
 # 定数の定義 ##########
@@ -527,7 +527,7 @@ def generate_movie(movie_filename, fps, bitrate='10240k'):
         text = r'-\|/'
         h = _plot.height * 2
         w = int(h * 16/9) & ~0x0f
-        with FFmpegFrameWriter(movie_filename, fps=fps, size=(w, h), bitrate=bitrate, stdout=True) as writer:
+        with FFmpegFrameWriter(movie_filename, fps=fps, size=(w, h), bitrate=bitrate) as writer:
             global sequence_stop
             sequence_stop = False
             for i, seq in enumerate(sequence_movie(fps)):
