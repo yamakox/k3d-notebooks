@@ -541,7 +541,7 @@ def generate_movie(movie_filename, fps, bitrate='10240k'):
                 update_movie_opacity_function_list(*seq['opacity_function_list'])
                 update_movie_plane(*seq['plane'])
                 update_movie_alpha_blending(seq['alpha_blending'])
-                _plot.fetch_screenshot(only_canvas=True)
+                _plot.fetch_screenshot(only_canvas=False)
                 screenshot = yield
                 img = np.asarray(Image.open(io.BytesIO(screenshot)))
                 if img.shape[1] > w:
