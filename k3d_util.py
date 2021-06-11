@@ -3,8 +3,9 @@ import ipywidgets as widgets
 from IPython.display import display
 import pandas as pd
 from scipy import interpolate
-from frame_writer2 import *
-import base64, io, time
+from frame_writer import *
+import base64, io, time, datetime
+import threading
 
 # 定数の定義 ##########
 
@@ -35,6 +36,9 @@ COLOR_MAP_LIST = [
     [0.0, 0.8, 0.6, 0.0,  1.0, 0.8, 0.6, 0.0],  # 橙
     [0.0, 1.0, 0.0, 0.0,  1.0, 1.0, 0.0, 0.0],  # 赤
 ]
+
+# 動画作成処理の負荷低減用スリープ時間(単位: 秒)
+MOVIE_WAIT_INTERVAL = .25
 
 # 変数の定義 ##########
 
@@ -96,9 +100,9 @@ def init_bounds(data):
 
 # コントロール用ウィジェットの初期化処理
 # objはMultiMIPオブジェクトのみ指定可能
-def init_controls(plot, obj, text_obj, axis='z', phi=90, distance=(1000, 1, 3000)):
-    global _plot, _obj, _text_obj
-    _plot, _obj, _text_obj = plot, obj, text_obj
+def init_controls(plot, obj, axis='z', phi=90, distance=(1000, 1, 3000)):
+    global _plot, _obj
+    _plot, _obj = plot, obj
     data1 = _obj.volume_list[0]
     
     # camera position
@@ -267,7 +271,7 @@ def display_controls():
 # 動画作成用ウィジェットの初期化 ##########
 
 button_reset = widgets.Button(description='init sequences')
-input_state_duration = widgets.BoundedIntText(value=6, min=1, max=60, step=1, description='duration:', layout=widgets.Layout(width='15%'))
+input_state_duration = widgets.BoundedFloatText(value=6, min=.1, max=60, step=.1, description='duration:', layout=widgets.Layout(width='15%'))
 button_store = widgets.Button(description='add sequence')
 input_state_index = widgets.BoundedIntText(value=0, min=0, max=99, step=1, description='No.:', layout=widgets.Layout(width='15%'))
 button_seek = widgets.Button(description='show')
@@ -282,7 +286,7 @@ button_dry_run = widgets.Button(description='dry run')
 input_movie_fps = widgets.BoundedIntText(value=30, min=1, max=60, step=1, description='fps:', layout=widgets.Layout(width='15%'))
 input_movie_filename = widgets.Text(value='hoge.mp4', description='file name:')
 button_movie = widgets.Button(description='generate movie')
-button_movie_stop = widgets.Button(description='stop')
+progress_movie = widgets.IntProgress(value=0, min=0, max=100, orientation='horizontal')
 
 def print_state():
     output_state.clear_output()
@@ -341,14 +345,25 @@ def on_remove(*b):
         print_state()
 
 def on_dry_run(*b):
+    print_state()
     dry_run(input_dry_run_fps.value)
 
+movie_thread = None
 def on_movie(*b):
-    generate_movie(input_movie_filename.value, input_movie_fps.value)
-
-def on_movie_stop(*b):
-    global sequence_stop
-    sequence_stop = True
+    global movie_thread
+    if movie_thread:
+        global sequence_stop
+        sequence_stop = True
+        movie_thread = None
+        button_movie.description = 'generate movie'
+    else:
+        print_state()
+        movie_thread = threading.Thread(
+            target=generate_movie, 
+            args=(input_movie_filename.value, input_movie_fps.value)
+        )
+        movie_thread.start()
+        button_movie.description = 'stop'
 
 button_store.on_click(on_store)
 button_reset.on_click(on_reset)
@@ -357,7 +372,6 @@ button_change.on_click(on_change)
 button_remove.on_click(on_remove)
 button_dry_run.on_click(on_dry_run)
 button_movie.on_click(on_movie)
-button_movie_stop.on_click(on_movie_stop)
 print_state()
 
 def get_state(duration=None):
@@ -412,7 +426,7 @@ def display_movie_controls():
                 input_movie_fps, 
                 input_movie_filename,
                 button_movie,
-                button_movie_stop,
+                progress_movie,
             ]),
             output_state, 
         ])
@@ -433,7 +447,7 @@ def update_movie_camera_pos(camera_pos, ox, oy, oz, axis, theta, phi, d):
     slider_va.value = phi
     slider_d.value = d
     observe_control_events()
-    if camera_pos is None:
+    if camera_pos is None or camera_pos == (0,0,0,0,0,0,0,0,0):
         _plot.camera = compute_camera_pos(ox, oy, oz, axis, theta, phi, d)
     else:
         _plot.camera = camera_pos
@@ -501,7 +515,6 @@ def sequence_movie(fps):
             )
 
 def dry_run(fps=5):
-    print_state()
     for seq in sequence_movie(fps):
         update_movie_camera_pos(*seq['camera_pos'])
         update_movie_color_range_list(*seq['color_range_list'])
@@ -510,9 +523,7 @@ def dry_run(fps=5):
         update_movie_alpha_blending(seq['alpha_blending'])
         time.sleep(1/fps)
 
-# 致命的な問題: 前のフレームと変化がないときはscreenshot = yieldで固まってしまう。(ipywidgetsのobserve関数で変数の変化を検出している)
-# → _text_objのテキストを常時書き換えて、前のフレームと常に変化が生じるようにした。
-def generate_movie(movie_filename, fps, bitrate='10240k'):
+def generate_movie(movie_filename, fps, bitrate='8192k'):
     # H.264ライセンス問題: https://av.watch.impress.co.jp/docs/20031118/mpegla.htm
     duration_list = [i['duration'] for i in state_store[1:]]
     if sum(duration_list) > 12 * 60:
@@ -520,41 +531,41 @@ def generate_movie(movie_filename, fps, bitrate='10240k'):
             print('H.264 movie should not be greater than 12 minutes.')
         return
     
-    @_plot.yield_screenshots
-    def generate_movie_():
-        with output_state:
-            print('generating movie started.')
-        text = r'-\|/'
-        h = _plot.height * 2
-        w = int(h * 16/9) & ~0x0f
-        with FFmpegFrameWriter(movie_filename, fps=fps, size=(w, h), bitrate=bitrate) as writer:
-            global sequence_stop
-            sequence_stop = False
-            for i, seq in enumerate(sequence_movie(fps)):
-                if sequence_stop:
-                    with output_state:
-                        print('generating movie stopped.')
-                    break
-                _text_obj.text = text[i%len(text)]
-                update_movie_camera_pos(*seq['camera_pos'])
-                update_movie_color_range_list(*seq['color_range_list'])
-                update_movie_opacity_function_list(*seq['opacity_function_list'])
-                update_movie_plane(*seq['plane'])
-                update_movie_alpha_blending(seq['alpha_blending'])
-                _plot.fetch_screenshot(only_canvas=False)
-                screenshot = yield
-                img = np.asarray(Image.open(io.BytesIO(screenshot)))
-                if img.shape[1] > w:
-                    offset = (img.shape[1] - w) // 2
-                    writer.add(img[:, offset:(offset+w), :3])
-                else:
-                    offset = (w - img.shape[1]) // 2
-                    writer.frame[:, offset:(offset+img.shape[1]), :] = img[:, :, :3]
-                    writer.add_frame()
-            else:
+    with output_state:
+        print('generating movie started at ' + str(datetime.datetime.now()))
+    h = _plot.height * 2
+    w = int(h * 16/9) & ~0x0f
+    for seq_number, seq in enumerate(sequence_movie(fps)):
+        pass
+    progress_movie.value = 0
+    progress_movie.max = seq_number + 1
+    with FFmpegFrameWriter(movie_filename, fps=fps, size=(w, h), bitrate=bitrate) as writer:
+        global sequence_stop
+        sequence_stop = False
+        for i, seq in enumerate(sequence_movie(fps)):
+            if sequence_stop:
                 with output_state:
-                    print('generating movie finished.')
-    
-    _plot.screenshot = ''
-    print_state()
-    generate_movie_()
+                    print('generating movie stopped at ' + str(datetime.datetime.now()))
+                break
+            progress_movie.value = i + 1
+            update_movie_camera_pos(*seq['camera_pos']); time.sleep(MOVIE_WAIT_INTERVAL)
+            update_movie_color_range_list(*seq['color_range_list']); time.sleep(MOVIE_WAIT_INTERVAL)
+            update_movie_opacity_function_list(*seq['opacity_function_list']); time.sleep(MOVIE_WAIT_INTERVAL)
+            update_movie_plane(*seq['plane']); time.sleep(MOVIE_WAIT_INTERVAL)
+            update_movie_alpha_blending(seq['alpha_blending']); time.sleep(MOVIE_WAIT_INTERVAL)
+            _plot.screenshot = ''
+            _plot.fetch_screenshot(only_canvas=False)
+            while not _plot.screenshot:
+                time.sleep(MOVIE_WAIT_INTERVAL)
+            img = np.asarray(Image.open(io.BytesIO(base64.b64decode(_plot.screenshot))))
+            if img.shape[1] > w:
+                offset = (img.shape[1] - w) // 2
+                writer.add(img[:, offset:(offset+w), :3])
+            else:
+                offset = (w - img.shape[1]) // 2
+                writer.frame[:, offset:(offset+img.shape[1]), :] = img[:, :, :3]
+                writer.add_frame()
+        else:
+            with output_state:
+                print('generating movie finished at ' + str(datetime.datetime.now()))
+            on_movie()
