@@ -414,7 +414,7 @@ def update_movie_camera_pos(camera_pos, ox, oy, oz, axis, theta, phi, d):
     slider_va.value = phi
     slider_d.value = d
     observe_control_events()
-    if camera_pos is None or camera_pos == (0,0,0,0,0,0,0,0,0):
+    if camera_pos is None or all(camera_pos == np.array((0,0,0,0,0,0,0,0,0))):
         _plot.camera = compute_camera_pos(ox, oy, oz, axis, theta, phi, d)
     else:
         _plot.camera = camera_pos
