@@ -3,9 +3,13 @@ import ipywidgets as widgets
 from IPython.display import display
 import pandas as pd
 from scipy import interpolate
-from frame_writer import *
 import base64, io, time, datetime
 import threading
+import sys
+if sys.platform == 'win32':
+    from frame_writer2 import *
+else:
+    from frame_writer import *
 
 # 定数の定義 ##########
 
@@ -500,10 +504,6 @@ def generate_movie(movie_filename, fps, bitrate='8192k'):
         global sequence_stop
         sequence_stop = False
         for i, seq in enumerate(sequence_movie(fps)):
-            if sequence_stop:
-                with output_state:
-                    print('generating movie stopped at ' + str(datetime.datetime.now()))
-                break
             progress_movie.value = i + 1
             update_movie_camera_pos(*seq['camera_pos']); time.sleep(MOVIE_WAIT_INTERVAL)
             update_movie_color_range(*seq['color_range']); time.sleep(MOVIE_WAIT_INTERVAL)
@@ -511,8 +511,12 @@ def generate_movie(movie_filename, fps, bitrate='8192k'):
             update_movie_plane(*seq['plane']); time.sleep(MOVIE_WAIT_INTERVAL)
             _plot.screenshot = ''
             _plot.fetch_screenshot(only_canvas=False)
-            while not _plot.screenshot:
+            while not (_plot.screenshot or sequence_stop):
                 time.sleep(MOVIE_WAIT_INTERVAL)
+            if sequence_stop:
+                with output_state:
+                    print('generating movie stopped at ' + str(datetime.datetime.now()))
+                break
             img = np.asarray(Image.open(io.BytesIO(base64.b64decode(_plot.screenshot))))
             if img.shape[1] > w:
                 offset = (img.shape[1] - w) // 2
