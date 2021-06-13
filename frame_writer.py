@@ -3,8 +3,10 @@
 from PIL import Image
 import numpy as np
 import ffmpeg
-import sys, os, time, fcntl
+import sys, os, time
 Image.MAX_IMAGE_PIXELS = 500000 * 1920
+if sys.platform != 'win32':
+    import fcntl
 
 class FFmpegFrameWriter:
     def __init__(self, video_file_name, fps=30, size=(1280, 720), bitrate='10240k', stdout=False):
@@ -21,8 +23,11 @@ class FFmpegFrameWriter:
             .run_async(pipe_stdin=True, pipe_stdout=True, pipe_stderr=True)
         )
         if self.stdout:
-            fl =  fcntl.fcntl(self.process.stderr, fcntl.F_GETFL)
-            fcntl.fcntl(self.process.stderr, fcntl.F_SETFL, fl|os.O_NONBLOCK)
+            if sys.platform != 'win32':
+                fl =  fcntl.fcntl(self.process.stderr, fcntl.F_GETFL)
+                fcntl.fcntl(self.process.stderr, fcntl.F_SETFL, fl|os.O_NONBLOCK)
+            else:
+                self.stdout = False
 
     def __enter__(self):
         return self
