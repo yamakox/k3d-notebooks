@@ -287,6 +287,7 @@ output_state = widgets.Output(layout=widgets.Layout(width='95%'))
 
 input_dry_run_fps = widgets.BoundedIntText(value=5, min=1, max=10, step=1, description='fps:', layout=widgets.Layout(width='15%'))
 button_dry_run = widgets.Button(description='dry run')
+button_camera_test = widgets.Button(description='camera test (experimental)')
 
 input_movie_fps = widgets.BoundedIntText(value=30, min=1, max=60, step=1, description='fps:', layout=widgets.Layout(width='15%'))
 input_movie_filename = widgets.Text(value='hoge.mp4', description='file name:')
@@ -353,6 +354,19 @@ def on_dry_run(*b):
     print_state()
     dry_run(input_dry_run_fps.value)
 
+auto_play = False
+
+def on_camera_test(*b):
+    print_state()
+    global auto_play
+    if auto_play:
+        auto_play = False
+        _plot.stop_auto_play()
+    else:
+        auto_play = True
+        camera_test(input_dry_run_fps.value)
+        _plot.start_auto_play()
+
 movie_thread = None
 def on_movie(*b):
     global movie_thread
@@ -376,6 +390,7 @@ button_seek.on_click(on_seek)
 button_change.on_click(on_change)
 button_remove.on_click(on_remove)
 button_dry_run.on_click(on_dry_run)
+button_camera_test.on_click(on_camera_test)
 button_movie.on_click(on_movie)
 print_state()
 
@@ -426,6 +441,7 @@ def display_movie_controls():
             widgets.HBox([
                 input_dry_run_fps, 
                 button_dry_run, 
+                #button_camera_test, 
             ]),
             widgets.HBox([
                 input_movie_fps, 
@@ -442,7 +458,7 @@ def display_movie_controls():
 
 # 動画作成処理 ##########
 
-def update_movie_camera_pos(camera_pos, ox, oy, oz, axis, theta, phi, d):
+def get_movie_camera_pos(camera_pos, ox, oy, oz, axis, theta, phi, d):
     unobserve_control_events()
     slider_ox.value = ox
     slider_oy.value = oy
@@ -453,9 +469,12 @@ def update_movie_camera_pos(camera_pos, ox, oy, oz, axis, theta, phi, d):
     slider_d.value = d
     observe_control_events()
     if camera_pos is None or all(camera_pos == np.array((0,0,0,0,0,0,0,0,0))):
-        _plot.camera = compute_camera_pos(ox, oy, oz, axis, theta, phi, d)
+        return compute_camera_pos(ox, oy, oz, axis, theta, phi, d)
     else:
-        _plot.camera = camera_pos
+        return camera_pos
+
+def update_movie_camera_pos(camera_pos, ox, oy, oz, axis, theta, phi, d):
+    _plot.camera = get_movie_camera_pos(camera_pos, ox, oy, oz, axis, theta, phi, d)
 
 def update_movie_color_range_list(slider_ch_):
     unobserve_control_events()
@@ -527,6 +546,15 @@ def dry_run(fps=5):
         update_movie_plane(*seq['plane'])
         update_movie_alpha_blending(seq['alpha_blending'])
         time.sleep(1/fps)
+
+def camera_test(fps=5):
+    _plot.fps = fps
+    t = 0.0
+    ca = {}
+    for seq in sequence_movie(_plot.fps):
+        ca[str(t)] = get_movie_camera_pos(*seq['camera_pos'])
+        t += 1.0 / _plot.fps
+    _plot.camera_animation = ca
 
 def generate_movie(movie_filename, fps, bitrate='8192k'):
     # H.264ライセンス問題: https://av.watch.impress.co.jp/docs/20031118/mpegla.htm
