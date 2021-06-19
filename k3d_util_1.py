@@ -244,22 +244,26 @@ def display_controls():
 # 動画作成用ウィジェットの初期化 ##########
 
 button_reset = widgets.Button(description='init sequences')
-input_state_duration = widgets.BoundedFloatText(value=6, min=.1, max=60, step=.1, description='duration:', layout=widgets.Layout(width='15%'))
-button_store = widgets.Button(description='add sequence')
+input_state_duration = widgets.BoundedFloatText(value=6, min=0, max=60, step=.1, description='duration:', layout=widgets.Layout(width='15%'))
+button_store = widgets.Button(description='add to sequence')
 input_state_index = widgets.BoundedIntText(value=0, min=0, max=99, step=1, description='No.:', layout=widgets.Layout(width='15%'))
 button_seek = widgets.Button(description='show')
 button_change = widgets.Button(description='change')
+button_insert = widgets.Button(description='insert')
 button_remove = widgets.Button(description='remove')
 
 output_state = widgets.Output(layout=widgets.Layout(width='95%'))
 
-input_dry_run_fps = widgets.BoundedIntText(value=5, min=1, max=10, step=1, description='fps:', layout=widgets.Layout(width='15%'))
+input_dry_run_fps = widgets.BoundedIntText(value=5, min=1, max=30, step=1, description='fps:', layout=widgets.Layout(width='15%'))
+input_dry_run_delay = widgets.BoundedIntText(value=0, min=0, max=60, step=1, description='start delay:', layout=widgets.Layout(width='15%'))
 button_dry_run = widgets.Button(description='dry run')
+label_dry_run = widgets.Label(value='')
 
 input_movie_fps = widgets.BoundedIntText(value=30, min=1, max=60, step=1, description='fps:', layout=widgets.Layout(width='15%'))
 input_movie_filename = widgets.Text(value='hoge.mp4', description='file name:')
 button_movie = widgets.Button(description='generate movie')
 progress_movie = widgets.IntProgress(value=0, min=0, max=100, orientation='horizontal')
+label_movie = widgets.Label(value='')
 
 def print_state():
     output_state.clear_output()
@@ -273,8 +277,6 @@ def on_store(*b):
         print_state()
 
 def on_change(*b):
-    state_ = get_state()
-    del state_['duration']
     index = input_state_index.value
     if index >= len(state_store):
         return
@@ -282,6 +284,16 @@ def on_change(*b):
     if index == 0:
         state_['duration'] = 0
     state_store[index] = state_
+    print_state()
+
+def on_insert(*b):
+    index = input_state_index.value
+    if index >= len(state_store):
+        return
+    state_ = get_state()
+    if index == 0:
+        state_['duration'] = 0
+    state_store.insert(index, state_)
     print_state()
 
 def on_reset(*b):
@@ -341,6 +353,7 @@ button_store.on_click(on_store)
 button_reset.on_click(on_reset)
 button_seek.on_click(on_seek)
 button_change.on_click(on_change)
+button_insert.on_click(on_insert)
 button_remove.on_click(on_remove)
 button_dry_run.on_click(on_dry_run)
 button_movie.on_click(on_movie)
@@ -386,18 +399,22 @@ def display_movie_controls():
                 input_state_index,
                 button_seek, 
                 button_change, 
+                button_insert, 
                 button_remove, 
                 button_reset,
             ]),
             widgets.HBox([
                 input_dry_run_fps, 
+                input_dry_run_delay, 
                 button_dry_run, 
+                label_dry_run, 
             ]),
             widgets.HBox([
                 input_movie_fps, 
                 input_movie_filename,
                 button_movie,
                 progress_movie,
+                label_movie, 
             ]),
             output_state, 
         ])
@@ -470,6 +487,7 @@ def sequence_movie(fps):
         plane_z_ = np.linspace(state0['plane_z'], state1['plane_z'], c)+.5
         for j in range(1 if i > 0 else 0, c):
             yield dict(
+                index = i + 1, 
                 camera_pos = (camera_pos_[j] if axis_chg else None, ox_[j], oy_[j], oz_[j], axis_, ha_[j], va_[j], d_[j]), 
                 color_range = ((slider_ch_[0][j], slider_ch_[1][j]),), 
                 opacity_function = (state1['check_ch'],), 
@@ -477,12 +495,17 @@ def sequence_movie(fps):
             )
 
 def dry_run(fps=5):
+    for i in range(input_dry_run_delay.value, 0, -1):
+        label_dry_run.value = f'count down: {i}'
+        time.sleep(1)
     for seq in sequence_movie(fps):
+        label_dry_run.value = '{} -> {}'.format(seq['index'] - 1, seq['index'])
         update_movie_camera_pos(*seq['camera_pos'])
         update_movie_color_range(*seq['color_range'])
         update_movie_opacity_function(*seq['opacity_function'])
         update_movie_plane(*seq['plane'])
         time.sleep(1/fps)
+    label_dry_run.value = ''
 
 def generate_movie(movie_filename, fps, bitrate='8192k'):
     # H.264ライセンス問題: https://av.watch.impress.co.jp/docs/20031118/mpegla.htm
@@ -505,6 +528,7 @@ def generate_movie(movie_filename, fps, bitrate='8192k'):
         sequence_stop = False
         for i, seq in enumerate(sequence_movie(fps)):
             progress_movie.value = i + 1
+            label_movie.value = '{} -> {}'.format(seq['index'] - 1, seq['index'])
             update_movie_camera_pos(*seq['camera_pos']); time.sleep(MOVIE_WAIT_INTERVAL)
             update_movie_color_range(*seq['color_range']); time.sleep(MOVIE_WAIT_INTERVAL)
             update_movie_opacity_function(*seq['opacity_function']); time.sleep(MOVIE_WAIT_INTERVAL)
@@ -529,3 +553,4 @@ def generate_movie(movie_filename, fps, bitrate='8192k'):
             with output_state:
                 print('generating movie finished at ' + str(datetime.datetime.now()))
             on_movie()
+        label_movie.value = ''
