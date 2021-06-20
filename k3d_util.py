@@ -1,16 +1,12 @@
 import numpy as np
+from PIL import Image
 import ipywidgets as widgets
 from IPython.display import display
 import pandas as pd
 from scipy import interpolate
-import base64, io, time, datetime
+import base64, io, time, datetime, sys
 import threading
-import sys
-if sys.platform == 'win32':
-    from frame_writer2 import *
-else:
-    from frame_writer import *
-
+import frame_writer, frame_writer2
 
 # 定数の定義 ##########
 
@@ -391,7 +387,7 @@ def on_movie(*b):
         print_state()
         movie_thread = threading.Thread(
             target=generate_movie, 
-            args=(input_movie_filename.value, input_movie_fps.value)
+            args=(input_movie_filename.value, input_movie_fps.value, 2 if sys.platform == 'win32' else 1)
         )
         movie_thread.start()
         button_movie.description = 'stop'
@@ -579,13 +575,18 @@ def camera_test(fps=5):
         t += 1.0 / _plot.fps
     _plot.camera_animation = ca
 
-def generate_movie(movie_filename, fps, bitrate='8192k'):
+def generate_movie(movie_filename, fps, frame_writer_type=1, bitrate='8192k'):
     # H.264ライセンス問題: https://av.watch.impress.co.jp/docs/20031118/mpegla.htm
     duration_list = [i['duration'] for i in state_store[1:]]
     if sum(duration_list) > 12 * 60:
         with output_state:
             print('H.264 movie should not be greater than 12 minutes.')
         return
+    
+    if frame_writer_type == 2:
+        frame_writer_class = frame_writer2.FFmpegFrameWriter
+    else:
+        frame_writer_class = frame_writer.FFmpegFrameWriter
     
     with output_state:
         print('generating movie started at ' + str(datetime.datetime.now()))
@@ -595,33 +596,37 @@ def generate_movie(movie_filename, fps, bitrate='8192k'):
         pass
     progress_movie.value = 0
     progress_movie.max = seq_number + 1
-    with FFmpegFrameWriter(movie_filename, fps=fps, size=(w, h), bitrate=bitrate) as writer:
+    with frame_writer_class(movie_filename, fps=fps, size=(w, h), bitrate=bitrate) as writer:
         global sequence_stop
         sequence_stop = False
         for i, seq in enumerate(sequence_movie(fps)):
-            progress_movie.value = i + 1
-            label_movie.value = '{} -> {}'.format(seq['index'] - 1, seq['index'])
-            update_movie_camera_pos(*seq['camera_pos']); time.sleep(MOVIE_WAIT_INTERVAL)
-            update_movie_color_range_list(*seq['color_range_list']); time.sleep(MOVIE_WAIT_INTERVAL)
-            update_movie_opacity_function_list(*seq['opacity_function_list']); time.sleep(MOVIE_WAIT_INTERVAL)
-            update_movie_plane(*seq['plane']); time.sleep(MOVIE_WAIT_INTERVAL)
-            update_movie_alpha_blending(seq['alpha_blending']); time.sleep(MOVIE_WAIT_INTERVAL)
-            _plot.screenshot = ''
-            _plot.fetch_screenshot(only_canvas=False)
-            while not (_plot.screenshot or sequence_stop):
-                time.sleep(MOVIE_WAIT_INTERVAL)
-            if sequence_stop:
+            try:
+                progress_movie.value = i + 1
+                label_movie.value = '{} -> {}'.format(seq['index'] - 1, seq['index'])
+                update_movie_camera_pos(*seq['camera_pos']); time.sleep(MOVIE_WAIT_INTERVAL)
+                update_movie_color_range_list(*seq['color_range_list']); time.sleep(MOVIE_WAIT_INTERVAL)
+                update_movie_opacity_function_list(*seq['opacity_function_list']); time.sleep(MOVIE_WAIT_INTERVAL)
+                update_movie_plane(*seq['plane']); time.sleep(MOVIE_WAIT_INTERVAL)
+                update_movie_alpha_blending(seq['alpha_blending']); time.sleep(MOVIE_WAIT_INTERVAL)
+                _plot.screenshot = ''
+                _plot.fetch_screenshot(only_canvas=False)
+                while not (_plot.screenshot or sequence_stop):
+                    time.sleep(MOVIE_WAIT_INTERVAL)
+                if sequence_stop:
+                    with output_state:
+                        print('generating movie stopped at ' + str(datetime.datetime.now()))
+                    break
+                img = np.asarray(Image.open(io.BytesIO(base64.b64decode(_plot.screenshot))))
+                if img.shape[1] > w:
+                    offset = (img.shape[1] - w) // 2
+                    writer.add(img[:, offset:(offset+w), :3])
+                else:
+                    offset = (w - img.shape[1]) // 2
+                    writer.frame[:, offset:(offset+img.shape[1]), :] = img[:, :, :3]
+                    writer.add_frame()
+            except Exception as excep:
                 with output_state:
-                    print('generating movie stopped at ' + str(datetime.datetime.now()))
-                break
-            img = np.asarray(Image.open(io.BytesIO(base64.b64decode(_plot.screenshot))))
-            if img.shape[1] > w:
-                offset = (img.shape[1] - w) // 2
-                writer.add(img[:, offset:(offset+w), :3])
-            else:
-                offset = (w - img.shape[1]) // 2
-                writer.frame[:, offset:(offset+img.shape[1]), :] = img[:, :, :3]
-                writer.add_frame()
+                    print(excep)
         else:
             with output_state:
                 print('generating movie finished at ' + str(datetime.datetime.now()))
