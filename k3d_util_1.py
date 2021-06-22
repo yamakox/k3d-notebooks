@@ -6,7 +6,7 @@ import pandas as pd
 from scipy import interpolate
 import base64, io, time, datetime, sys
 import threading
-import frame_writer, frame_writer2
+from frame_writer2 import FFmpegFrameWriter
 
 # 定数の定義 ##########
 
@@ -341,7 +341,7 @@ def on_movie(*b):
         print_state()
         movie_thread = threading.Thread(
             target=generate_movie, 
-            args=(input_movie_filename.value, input_movie_fps.value, 2 if sys.platform == 'win32' else 1)
+            args=(input_movie_filename.value, input_movie_fps.value)
         )
         movie_thread.start()
         button_movie.description = 'stop'
@@ -504,18 +504,13 @@ def dry_run(fps=5):
         time.sleep(1/fps)
     label_dry_run.value = ''
 
-def generate_movie(movie_filename, fps, frame_writer_type=1, bitrate='8192k'):
+def generate_movie(movie_filename, fps, bitrate='8192k'):
     # H.264ライセンス問題: https://av.watch.impress.co.jp/docs/20031118/mpegla.htm
     duration_list = [i['duration'] for i in state_store[1:]]
     if sum(duration_list) > 12 * 60:
         with output_state:
             print('H.264 movie should not be greater than 12 minutes.')
         return
-    
-    if frame_writer_type == 2:
-        frame_writer_class = frame_writer2.FFmpegFrameWriter
-    else:
-        frame_writer_class = frame_writer.FFmpegFrameWriter
     
     with output_state:
         print('generating movie started at ' + str(datetime.datetime.now()))
@@ -525,7 +520,7 @@ def generate_movie(movie_filename, fps, frame_writer_type=1, bitrate='8192k'):
         pass
     progress_movie.value = 0
     progress_movie.max = seq_number + 1
-    with frame_writer_class(movie_filename, fps=fps, size=(w, h), bitrate=bitrate) as writer:
+    with FFmpegFrameWriter(movie_filename, fps=fps, size=(w, h), bitrate=bitrate) as writer:
         global sequence_stop
         sequence_stop = False
         for i, seq in enumerate(sequence_movie(fps)):
@@ -533,10 +528,9 @@ def generate_movie(movie_filename, fps, frame_writer_type=1, bitrate='8192k'):
                 progress_movie.value = i + 1
                 label_movie.value = '{} -> {}'.format(seq['index'] - 1, seq['index'])
                 update_movie_camera_pos(*seq['camera_pos']); time.sleep(MOVIE_WAIT_INTERVAL)
-                update_movie_color_range_list(*seq['color_range_list']); time.sleep(MOVIE_WAIT_INTERVAL)
-                update_movie_opacity_function_list(*seq['opacity_function_list']); time.sleep(MOVIE_WAIT_INTERVAL)
+                update_movie_color_range(*seq['color_range']); time.sleep(MOVIE_WAIT_INTERVAL)
+                update_movie_opacity_function(*seq['opacity_function']); time.sleep(MOVIE_WAIT_INTERVAL)
                 update_movie_plane(*seq['plane']); time.sleep(MOVIE_WAIT_INTERVAL)
-                update_movie_alpha_blending(seq['alpha_blending']); time.sleep(MOVIE_WAIT_INTERVAL)
                 _plot.screenshot = ''
                 _plot.fetch_screenshot(only_canvas=False)
                 while not (_plot.screenshot or sequence_stop):
