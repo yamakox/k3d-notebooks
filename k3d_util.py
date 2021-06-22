@@ -542,15 +542,25 @@ def sequence_movie(fps):
         plane_x_ = np.linspace(state0['plane_x'], state1['plane_x'], c)+.5
         plane_y_ = np.linspace(state0['plane_y'], state1['plane_y'], c)+.5
         plane_z_ = np.linspace(state0['plane_z'], state1['plane_z'], c)+.5
+        camera_pos, color_range_list, opacity_function_list, plane, alpha_blending = None, None, None, None, None
         for j in range(1 if i > 0 else 0, c):
-            yield dict(
-                index = i + 1, 
-                camera_pos = (camera_pos_[j] if axis_chg else None, ox_[j], oy_[j], oz_[j], axis_, ha_[j], va_[j], d_[j]), 
-                color_range_list = ([(ch[j][0], ch[j][1]) for ch in slider_ch_],), 
-                opacity_function_list = (state1['check_ch'],), 
-                plane = ((plane_x_[j][0], plane_x_[j][1]), (plane_y_[j][0], plane_y_[j][1]), (plane_z_[j][0], plane_z_[j][1])), 
-                alpha_blending = state0['alpha'] if j < c - 1 else state1['alpha']
-            )
+            camera_pos__ = (camera_pos_[j] if axis_chg else None, ox_[j], oy_[j], oz_[j], axis_, ha_[j], va_[j], d_[j])
+            color_range_list__ = ([(ch[j][0], ch[j][1]) for ch in slider_ch_],)
+            opacity_function_list__ = (state1['check_ch'],)
+            plane__ = ((plane_x_[j][0], plane_x_[j][1]), (plane_y_[j][0], plane_y_[j][1]), (plane_z_[j][0], plane_z_[j][1]))
+            alpha_blending__ = state0['alpha'] if j < c - 1 else state1['alpha']
+            retval = dict(index=i+1)
+            if camera_pos != camera_pos__:
+                retval['camera_pos'] = camera_pos = camera_pos__
+            if color_range_list != color_range_list__:
+                retval['color_range_list'] = color_range_list = color_range_list__
+            if opacity_function_list != opacity_function_list__:
+                retval['opacity_function_list'] = opacity_function_list = opacity_function_list__
+            if plane != plane__:
+                retval['plane'] = plane = plane__
+            if alpha_blending != alpha_blending__:
+                retval['alpha_blending'] = alpha_blending = alpha_blending__
+            yield retval
 
 def dry_run(fps=5):
     for i in range(input_dry_run_delay.value, 0, -1):
@@ -558,11 +568,16 @@ def dry_run(fps=5):
         time.sleep(1)
     for seq in sequence_movie(fps):
         label_dry_run.value = '{} -> {}'.format(seq['index'] - 1, seq['index'])
-        update_movie_camera_pos(*seq['camera_pos'])
-        update_movie_color_range_list(*seq['color_range_list'])
-        update_movie_opacity_function_list(*seq['opacity_function_list'])
-        update_movie_plane(*seq['plane'])
-        update_movie_alpha_blending(seq['alpha_blending'])
+        if 'camera_pos' in seq:
+            update_movie_camera_pos(*seq['camera_pos'])
+        if 'color_range_list' in seq:
+            update_movie_color_range_list(*seq['color_range_list'])
+        if 'opacity_function_list' in seq:
+            update_movie_opacity_function_list(*seq['opacity_function_list'])
+        if 'plane' in seq:
+            update_movie_plane(*seq['plane'])
+        if 'alpha_blending' in seq:
+            update_movie_alpha_blending(seq['alpha_blending'])
         time.sleep(1/fps)
     label_dry_run.value = ''
 
@@ -598,11 +613,16 @@ def generate_movie(movie_filename, fps, bitrate='8192k'):
             try:
                 progress_movie.value = i + 1
                 label_movie.value = '{} -> {}'.format(seq['index'] - 1, seq['index'])
-                update_movie_camera_pos(*seq['camera_pos']); time.sleep(MOVIE_WAIT_INTERVAL)
-                update_movie_color_range_list(*seq['color_range_list']); time.sleep(MOVIE_WAIT_INTERVAL)
-                update_movie_opacity_function_list(*seq['opacity_function_list']); time.sleep(MOVIE_WAIT_INTERVAL)
-                update_movie_plane(*seq['plane']); time.sleep(MOVIE_WAIT_INTERVAL)
-                update_movie_alpha_blending(seq['alpha_blending']); time.sleep(MOVIE_WAIT_INTERVAL)
+                if 'camera_pos' in seq:
+                    update_movie_camera_pos(*seq['camera_pos']); time.sleep(MOVIE_WAIT_INTERVAL)
+                if 'color_range_list' in seq:
+                    update_movie_color_range_list(*seq['color_range_list']); time.sleep(MOVIE_WAIT_INTERVAL)
+                if 'opacity_function_list' in seq:
+                    update_movie_opacity_function_list(*seq['opacity_function_list']); time.sleep(MOVIE_WAIT_INTERVAL)
+                if 'plane' in seq:
+                    update_movie_plane(*seq['plane']); time.sleep(MOVIE_WAIT_INTERVAL)
+                if 'alpha_blending' in seq:
+                    update_movie_alpha_blending(seq['alpha_blending']); time.sleep(MOVIE_WAIT_INTERVAL)
                 _plot.screenshot = ''
                 _plot.fetch_screenshot(only_canvas=False)
                 while not (_plot.screenshot or sequence_stop):
