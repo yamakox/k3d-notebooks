@@ -7,6 +7,7 @@ from scipy import interpolate
 import base64, io, time, datetime, sys
 import threading
 from frame_writer2 import FFmpegFrameWriter
+import json
 
 # 定数の定義 ##########
 
@@ -240,7 +241,10 @@ def display_controls():
 
 # 動画作成用ウィジェットの初期化 ##########
 
-button_reset = widgets.Button(description='init sequences')
+input_filename = widgets.Text(value='sequence.json', description='file name:')
+button_load = widgets.Button(description='load sequence')
+button_save = widgets.Button(description='save sequence')
+button_reset = widgets.Button(description='init sequence')
 input_state_duration = widgets.BoundedFloatText(value=6, min=0, max=60, step=.1, description='duration:', layout=widgets.Layout(width='15%'))
 button_store = widgets.Button(description='add to sequence')
 input_state_index = widgets.BoundedIntText(value=0, min=0, max=99, step=1, description='No.:', layout=widgets.Layout(width='15%'))
@@ -252,7 +256,7 @@ button_remove = widgets.Button(description='remove')
 output_state = widgets.Output(layout=widgets.Layout(width='95%'))
 
 input_dry_run_fps = widgets.BoundedIntText(value=5, min=1, max=30, step=1, description='fps:', layout=widgets.Layout(width='15%'))
-input_dry_run_delay = widgets.BoundedIntText(value=0, min=0, max=60, step=1, description='start delay:', layout=widgets.Layout(width='15%'))
+input_dry_run_delay = widgets.BoundedIntText(value=3, min=0, max=60, step=1, description='start delay:', layout=widgets.Layout(width='15%'))
 button_dry_run = widgets.Button(description='dry run')
 label_dry_run = widgets.Label(value='')
 
@@ -291,6 +295,17 @@ def on_insert(*b):
     if index == 0:
         state_['duration'] = 0
     state_store.insert(index, state_)
+    print_state()
+
+def on_save(*b):
+    with open(input_filename.value, 'w') as file:
+        json.dump(state_store, file)
+    print_state()
+
+def on_load(*b):
+    global state_store
+    with open(input_filename.value, 'r') as file:
+        state_store = json.load(file)
     print_state()
 
 def on_reset(*b):
@@ -347,13 +362,15 @@ def on_movie(*b):
         button_movie.description = 'stop'
 
 button_store.on_click(on_store)
-button_reset.on_click(on_reset)
 button_seek.on_click(on_seek)
 button_change.on_click(on_change)
 button_insert.on_click(on_insert)
 button_remove.on_click(on_remove)
 button_dry_run.on_click(on_dry_run)
 button_movie.on_click(on_movie)
+button_reset.on_click(on_reset)
+button_load.on_click(on_load)
+button_save.on_click(on_save)
 print_state()
 
 def get_state(duration=None):
@@ -391,6 +408,12 @@ def display_movie_controls():
     display(
         widgets.VBox([
             widgets.HBox([
+                button_reset,
+                input_filename, 
+                button_load,
+                button_save,
+            ]),
+            widgets.HBox([
                 input_state_duration, 
                 button_store,
                 input_state_index,
@@ -398,7 +421,6 @@ def display_movie_controls():
                 button_change, 
                 button_insert, 
                 button_remove, 
-                button_reset,
             ]),
             widgets.HBox([
                 input_dry_run_fps, 
@@ -416,7 +438,7 @@ def display_movie_controls():
             output_state, 
         ])
     )
-    on_reset()
+    print_state()
 
 
 
