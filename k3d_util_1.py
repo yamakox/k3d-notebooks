@@ -63,7 +63,7 @@ slider_oy = widgets.FloatSlider(step=0.1, description='y:', layout=widgets.Layou
 slider_oz = widgets.FloatSlider(step=0.1, description='z:', layout=widgets.Layout(width='33%'))
 menu_axis = widgets.Dropdown(value='z', options=['x', 'y', 'z'], layout=widgets.Layout(width='5%'))
 slider_ha = widgets.FloatSlider(value=0, min=0.0, max=360.0, step=1.0, description='theta:', layout=widgets.Layout(width='30%'))
-slider_va = widgets.FloatSlider(value=90, min=1.0, max=179.0, step=1.0, description='phi:', layout=widgets.Layout(width='30%'))
+slider_va = widgets.FloatSlider(value=0, min=-180, max=180.0, step=1.0, description='phi:', layout=widgets.Layout(width='30%'))
 slider_d = widgets.FloatSlider(value=1000, min=1, max=3000, step=1.0, description='distance:', layout=widgets.Layout(width='30%'))
 
 # channel contrast
@@ -117,27 +117,27 @@ def init_controls(plot, obj, axis='z', phi=90, distance=(1000, 1, 3000)):
 # camera position change event handler
 def compute_camera_pos_x(ox, oy, oz, theta, phi, d):
     phi_ = np.pi * phi / 180.0
-    yz_, x_ = d * np.sin(phi_), d * np.cos(phi_)
+    yz_, x_ = d * np.sin(phi_), -d * np.cos(phi_)
     theta_ = np.pi * theta / 180.0
-    y_, z_ = yz_ * -np.sin(theta_), yz_ * -np.cos(theta_)
+    y_, z_ = yz_ * np.sin(-theta_), yz_ * np.cos(-theta_)
     ox_, oy_, oz_ =  cx/2 + ox, cy/2 + oy, cz/2 + oz
-    return [ox_ + x_, oy_ + y_, oz_ + z_, ox_, oy_, oz_, np.sin(phi_), np.sin(theta_), np.cos(theta_)]
+    return [ox_ + x_, oy_ + y_, oz_ + z_, ox_, oy_, oz_, -np.sin(phi_), -np.cos(phi_) * np.sin(-theta_), -np.cos(phi_) * np.cos(-theta_)]
 
 def compute_camera_pos_y(ox, oy, oz, theta, phi, d):
     phi_ = np.pi * phi / 180.0
-    zx_, y_ = d * np.sin(phi_), d * np.cos(phi_)
+    zx_, y_ = d * np.sin(phi_), -d * np.cos(phi_)
     theta_ = np.pi * theta / 180.0
-    z_, x_ = zx_ * -np.sin(theta_), zx_ * -np.cos(theta_)
+    z_, x_ = zx_ * np.sin(-theta_), zx_ * np.cos(-theta_)
     ox_, oy_, oz_ =  cx/2 + ox, cy/2 + oy, cz/2 + oz
-    return [ox_ + x_, oy_ + y_, oz_ + z_, ox_, oy_, oz_, np.cos(theta_), np.sin(phi_), np.sin(theta_)]
+    return [ox_ + x_, oy_ + y_, oz_ + z_, ox_, oy_, oz_, -np.cos(phi_) * np.cos(-theta_), -np.sin(phi_), -np.cos(phi_) * np.sin(-theta_)]
 
 def compute_camera_pos_z(ox, oy, oz, theta, phi, d):
     phi_ = np.pi * phi / 180.0
-    xy_, z_ = d * np.sin(phi_), d * np.cos(phi_)
+    xy_, z_ = d * np.sin(phi_), -d * np.cos(phi_)
     theta_ = np.pi * theta / 180.0
-    x_, y_ = xy_ * -np.sin(theta_), xy_ * -np.cos(theta_)
+    x_, y_ = xy_ * np.sin(-theta_), xy_ * np.cos(-theta_)
     ox_, oy_, oz_ =  cx/2 + ox, cy/2 + oy, cz/2 + oz
-    return [ox_ + x_, oy_ + y_, oz_ + z_, ox_, oy_, oz_, np.sin(theta_), np.cos(theta_), np.sin(phi_)]
+    return [ox_ + x_, oy_ + y_, oz_ + z_, ox_, oy_, oz_, -np.cos(phi_) * np.sin(-theta_), -np.cos(phi_) * np.cos(-theta_), -np.sin(phi_)]
 
 compute_camera_pos_table = {
     'x': compute_camera_pos_x, 
