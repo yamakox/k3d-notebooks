@@ -57,6 +57,11 @@ cx, cy, cz = (
     0 * voxel_dim[1] * REDUCE_RATIO, 
     0 * voxel_dim[2] * Z_STEP
 )
+bounds = (
+    -cx/2, cx/2, 
+    -cy/2, cy/2, 
+    -cz/2, cz/2
+)
 
 # 動画のエンドポイントのリストを格納する
 state_store = []
@@ -82,13 +87,15 @@ for ch in range(1, 5):
 slider_plane_x = widgets.IntRangeSlider(step=1, description='x slice:', layout=widgets.Layout(width='95%'))
 slider_plane_y = widgets.IntRangeSlider(step=1, description='y slice:', layout=widgets.Layout(width='95%'))
 slider_plane_z = widgets.IntRangeSlider(step=1, description='z slice:', layout=widgets.Layout(width='95%'))
+slider_plane_zx = widgets.FloatSlider(value=0, min=-90, max=90.0, step=1, description='z_x:', layout=widgets.Layout(width='95%'))
+slider_plane_zy = widgets.FloatSlider(value=0, min=-90, max=90.0, step=1, description='z_y:', layout=widgets.Layout(width='95%'))
 
 # alpha blending
 check_alpha = widgets.Checkbox(description='alpha blending')
 
 # 3D画像データの寸法を計算する
 def init_bounds(data):
-    global voxel_dim, cx, cy, cz
+    global voxel_dim, cx, cy, cz, bounds
     voxel_dim = [
         CAMERA_PIXEL_SIZE * BINNING / MAGNIFICATION, 
         CAMERA_PIXEL_SIZE * BINNING / MAGNIFICATION, 
@@ -99,6 +106,12 @@ def init_bounds(data):
         data.shape[1] * voxel_dim[1] * REDUCE_RATIO, 
         data.shape[0] * voxel_dim[2] * Z_STEP
     )
+    bounds = (
+        -cx/2, cx/2, 
+        -cy/2, cy/2, 
+        -cz/2, cz/2
+    )
+
 
 # コントロール用ウィジェットの初期化処理
 # objはMultiMIPオブジェクトのみ指定可能
@@ -135,7 +148,8 @@ def compute_camera_pos_x(ox, oy, oz, theta, phi, d):
     yz_, x_ = d * np.sin(phi_), -d * np.cos(phi_)
     theta_ = np.pi * theta / 180.0
     y_, z_ = yz_ * np.sin(-theta_), yz_ * np.cos(-theta_)
-    ox_, oy_, oz_ =  cx/2 + ox, cy/2 + oy, cz/2 + oz
+    #ox_, oy_, oz_ =  cx/2 + ox, cy/2 + oy, cz/2 + oz
+    ox_, oy_, oz_ =  ox, oy, oz
     return [ox_ + x_, oy_ + y_, oz_ + z_, ox_, oy_, oz_, -np.sin(phi_), -np.cos(phi_) * np.sin(-theta_), -np.cos(phi_) * np.cos(-theta_)]
 
 def compute_camera_pos_y(ox, oy, oz, theta, phi, d):
@@ -143,7 +157,8 @@ def compute_camera_pos_y(ox, oy, oz, theta, phi, d):
     zx_, y_ = d * np.sin(phi_), -d * np.cos(phi_)
     theta_ = np.pi * theta / 180.0
     z_, x_ = zx_ * np.sin(-theta_), zx_ * np.cos(-theta_)
-    ox_, oy_, oz_ =  cx/2 + ox, cy/2 + oy, cz/2 + oz
+    #ox_, oy_, oz_ =  cx/2 + ox, cy/2 + oy, cz/2 + oz
+    ox_, oy_, oz_ =  ox, oy, oz
     return [ox_ + x_, oy_ + y_, oz_ + z_, ox_, oy_, oz_, -np.cos(phi_) * np.cos(-theta_), -np.sin(phi_), -np.cos(phi_) * np.sin(-theta_)]
 
 def compute_camera_pos_z(ox, oy, oz, theta, phi, d):
@@ -151,7 +166,8 @@ def compute_camera_pos_z(ox, oy, oz, theta, phi, d):
     xy_, z_ = d * np.sin(phi_), -d * np.cos(phi_)
     theta_ = np.pi * theta / 180.0
     x_, y_ = xy_ * np.sin(-theta_), xy_ * np.cos(-theta_)
-    ox_, oy_, oz_ =  cx/2 + ox, cy/2 + oy, cz/2 + oz
+    #ox_, oy_, oz_ =  cx/2 + ox, cy/2 + oy, cz/2 + oz
+    ox_, oy_, oz_ =  ox, oy, oz
     return [ox_ + x_, oy_ + y_, oz_ + z_, ox_, oy_, oz_, -np.cos(phi_) * np.sin(-theta_), -np.cos(phi_) * np.cos(-theta_), -np.sin(phi_)]
 
 compute_camera_pos_table = {
@@ -190,13 +206,19 @@ def update_opacity_function_list(*change):
 
 # clipping planes change event handler
 def update_plane(*change):
+    zx_angle = np.pi * slider_plane_zx.value / 180.0
+    zy_angle = np.pi * slider_plane_zy.value / 180.0
+    nv_zx = -np.sin(zx_angle) * np.cos(zy_angle)
+    nv_zy = -np.cos(zx_angle) * np.sin(zy_angle)
+    nv_zz = np.cos(zx_angle) * np.cos(zy_angle)
     _plot.clipping_planes=[
-        [1, 0, 0, -slider_plane_x.value[0] * voxel_dim[0] * REDUCE_RATIO],
-        [0, 1, 0, -slider_plane_y.value[0] * voxel_dim[1] * REDUCE_RATIO],
-        [0, 0, 1, -slider_plane_z.value[0] * voxel_dim[2] * Z_STEP],
-        [-1, 0, 0, slider_plane_x.value[1] * voxel_dim[0] * REDUCE_RATIO],
-        [0, -1, 0, slider_plane_y.value[1] * voxel_dim[1] * REDUCE_RATIO],
-        [0, 0, -1, slider_plane_z.value[1] * voxel_dim[2] * Z_STEP],
+        [1, 0, 0, -slider_plane_x.value[0] * voxel_dim[0] * REDUCE_RATIO + cx/2],
+        [0, 1, 0, -slider_plane_y.value[0] * voxel_dim[1] * REDUCE_RATIO + cy/2],
+        [nv_zx, nv_zy, nv_zz, -slider_plane_z.value[0] * voxel_dim[2] * Z_STEP + cz/2],
+        [-1, 0, 0, slider_plane_x.value[1] * voxel_dim[0] * REDUCE_RATIO - cx/2],
+        [0, -1, 0, slider_plane_y.value[1] * voxel_dim[1] * REDUCE_RATIO - cy/2],
+#        [-nv_zx, -nv_zy, -nv_zz, slider_plane_z.value[1] * voxel_dim[2] * Z_STEP - cz/2],
+        [0, 0, -1, slider_plane_z.value[1] * voxel_dim[2] * Z_STEP - cz/2],
     ]
 
 # alpha blending change event handler
@@ -226,6 +248,8 @@ def observe_control_events():
     slider_plane_x.observe(update_plane, names='value')
     slider_plane_y.observe(update_plane, names='value')
     slider_plane_z.observe(update_plane, names='value')
+    slider_plane_zx.observe(update_plane, names='value')
+    slider_plane_zy.observe(update_plane, names='value')
     check_alpha.observe(update_plane_alpha, names='value')
 
 # unobserve events
@@ -243,6 +267,8 @@ def unobserve_control_events():
     slider_plane_x.unobserve(update_plane, names='value')
     slider_plane_y.unobserve(update_plane, names='value')
     slider_plane_z.unobserve(update_plane, names='value')
+    slider_plane_zx.unobserve(update_plane, names='value')
+    slider_plane_zy.unobserve(update_plane, names='value')
     check_alpha.unobserve(update_plane_alpha, names='value')
 
 observe_control_events()
@@ -262,6 +288,8 @@ def display_controls():
                     slider_plane_x, 
                     slider_plane_y, 
                     slider_plane_z, 
+                    slider_plane_zx, 
+                    slider_plane_zy, 
                     check_alpha, 
                 ], layout=widgets.Layout(width='45%')),
             ]),
